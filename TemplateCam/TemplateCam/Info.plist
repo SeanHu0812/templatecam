@@ -3,10 +3,17 @@
 <plist version="1.0">
 <dict>
 	<key>NSCameraUsageDescription</key>
-	<string>TemplateCam needs access to your camera to take photos with composition templates.</string>
+	<string>TemplateCam needs camera access to take photos using composition templates and professional presets.</string>
 	<key>NSPhotoLibraryAddUsageDescription</key>
-	<string>TemplateCam needs access to save your photos to the photo library.</string>
+	<string>TemplateCam needs permission to save photos you take to your photo library.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
-	<string>TemplateCam needs access to your photo library to save your photos.</string>
+	<string>TemplateCam needs permission to access your photo library to save the photos you capture.</string>
+	<key>UILaunchScreen</key>
+	<dict>
+		<key>UIColorName</key>
+		<string></string>
+		<key>UIImageName</key>
+		<string></string>
+	</dict>
 </dict>
 </plist>
