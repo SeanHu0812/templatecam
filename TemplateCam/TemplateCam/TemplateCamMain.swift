@@ -689,10 +689,11 @@ struct CameraTabView: View {
                         Image(systemName: overlayOpacity > 0.5 ? "eye.fill" : "eye.slash.fill")
                             .font(.system(size: 16))
                         Slider(value: $overlayOpacity, in: 0...1)
-                            .frame(width: 80)
+                            .frame(width: 70)
                             .accentColor(.white)
                     }
                     .foregroundColor(.white)
+                    .frame(width: 80)
 
                     Spacer()
 
@@ -716,36 +717,39 @@ struct CameraTabView: View {
                     Spacer()
 
                     // Last Photo Preview
-                    if let img = camera.latestPhoto {
-                        Button {
-                            showPhotoPreview.toggle()
-                        } label: {
-                            #if canImport(UIKit)
-                            Image(uiImage: img)
-                                .resizable()
-                                .scaledToFill()
-                                .frame(width: 50, height: 50)
-                                .clipShape(RoundedRectangle(cornerRadius: 10))
-                                .overlay(
-                                    RoundedRectangle(cornerRadius: 10)
-                                        .stroke(.white, lineWidth: 2)
-                                )
-                            #else
-                            Image(nsImage: img)
-                                .resizable()
-                                .scaledToFill()
-                                .frame(width: 50, height: 50)
-                                .clipShape(RoundedRectangle(cornerRadius: 10))
-                            #endif
+                    Group {
+                        if let img = camera.latestPhoto {
+                            Button {
+                                showPhotoPreview.toggle()
+                            } label: {
+                                #if canImport(UIKit)
+                                Image(uiImage: img)
+                                    .resizable()
+                                    .scaledToFill()
+                                    .frame(width: 60, height: 60)
+                                    .clipShape(RoundedRectangle(cornerRadius: 10))
+                                    .overlay(
+                                        RoundedRectangle(cornerRadius: 10)
+                                            .stroke(.white, lineWidth: 2)
+                                    )
+                                #else
+                                Image(nsImage: img)
+                                    .resizable()
+                                    .scaledToFill()
+                                    .frame(width: 60, height: 60)
+                                    .clipShape(RoundedRectangle(cornerRadius: 10))
+                                #endif
+                            }
+                            .sheet(isPresented: $showPhotoPreview) {
+                                PhotoPreviewSheet(image: img)
+                            }
+                        } else {
+                            RoundedRectangle(cornerRadius: 10)
+                                .fill(.white.opacity(0.2))
+                                .frame(width: 60, height: 60)
                         }
-                        .sheet(isPresented: $showPhotoPreview) {
-                            PhotoPreviewSheet(image: img)
-                        }
-                    } else {
-                        RoundedRectangle(cornerRadius: 10)
-                            .fill(.white.opacity(0.2))
-                            .frame(width: 50, height: 50)
                     }
+                    .frame(width: 80)
                 }
                 .padding(.horizontal, 24)
                 .padding(.bottom, 32)
