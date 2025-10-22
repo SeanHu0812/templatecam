@@ -10,56 +10,107 @@ import CoreImage.CIFilterBuiltins
 
 @main
 struct TemplateCamApp: App {
+    @StateObject private var appState = AppState()
+
     var body: some Scene {
-        WindowGroup { ContentView() }
+        WindowGroup {
+            MainTabView()
+                .environmentObject(appState)
+        }
+    }
+}
+
+// MARK: - App State
+class AppState: ObservableObject {
+    @Published var userProfile: UserProfile
+    @Published var templates: [PhotoTemplate]
+    @Published var selectedTemplate: PhotoTemplate?
+
+    init() {
+        self.userProfile = UserProfile(
+            username: "PhotoEnthusiast",
+            bio: "Capturing moments with perfect composition",
+            savedTemplateIds: []
+        )
+        self.templates = SampleTemplates.all
+    }
+
+    func toggleSaveTemplate(_ template: PhotoTemplate) {
+        if let index = userProfile.savedTemplateIds.firstIndex(of: template.id) {
+            userProfile.savedTemplateIds.remove(at: index)
+        } else {
+            userProfile.savedTemplateIds.append(template.id)
+        }
+    }
+
+    func isSaved(_ template: PhotoTemplate) -> Bool {
+        userProfile.savedTemplateIds.contains(template.id)
+    }
+
+    var savedTemplates: [PhotoTemplate] {
+        templates.filter { userProfile.savedTemplateIds.contains($0.id) }
     }
 }
 
 // MARK: - Models
+struct UserProfile: Codable {
+    var username: String
+    var bio: String
+    var savedTemplateIds: [UUID]
+}
+
 struct OverlayElement: Identifiable, Codable {
     enum Kind: String, Codable { case line, rect, ellipse, path, grid }
     var id: UUID = UUID()
     var kind: Kind
-    // normalized coordinates [0,1] in preview space
-    var points: [CGPoint] = [] // for line/path (interpreted as sequence)
-    var rect: CGRect = .zero   // for rect/ellipse
-    var gridRows: Int = 0      // for grid
+    var points: [CGPoint] = []
+    var rect: CGRect = .zero
+    var gridRows: Int = 0
     var gridCols: Int = 0
 }
 
 struct Preset: Identifiable, Codable {
     var id: UUID = UUID()
     var name: String
-    // Live capture tuning (device-level). Not all devices support all ranges.
-    var exposureBias: Float? = nil // -8.0 ... +8.0 typical
-    var temperature: Float? = nil  // in Kelvin-like scale (approx for WB lock helper)
-    var tint: Float? = nil         // green-magenta shift
-    // Post processing (Core Image)
-    var exposureEV: Float? = nil   // CIExposureAdjust inputEV, e.g. -1.0...+1.0
-    var temperatureShift: Float? = nil // CITemperatureAndTint delta
+    var exposureBias: Float? = nil
+    var temperature: Float? = nil
+    var tint: Float? = nil
+    var exposureEV: Float? = nil
+    var temperatureShift: Float? = nil
     var tintShift: Float? = nil
-    var vibrance: Float? = nil     // -1 ... +1
-    var saturation: Float? = nil   // 0 ... 2
-    var contrast: Float? = nil     // 0.5 ... 1.5
+    var vibrance: Float? = nil
+    var saturation: Float? = nil
+    var contrast: Float? = nil
 }
 
-struct PhotoTemplate: Identifiable, Codable {
+struct PhotoTemplate: Identifiable, Codable, Hashable {
     var id: UUID = UUID()
     var name: String
     var description: String
+    var category: String
     var overlay: [OverlayElement]
     var preset: Preset
+    var isPopular: Bool = false
+
+    static func == (lhs: PhotoTemplate, rhs: PhotoTemplate) -> Bool {
+        lhs.id == rhs.id
+    }
+
+    func hash(into hasher: inout Hasher) {
+        hasher.combine(id)
+    }
 }
 
 // MARK: - Sample Templates
 struct SampleTemplates {
     static let ruleOfThirdsPortrait = PhotoTemplate(
-        name: "Rule of Thirds Portrait",
-        description: "Align subject eyes on top horizontal; center body on left vertical.",
+        name: "Portrait Classic",
+        description: "Align subject's eyes on the top third line for perfect portrait composition",
+        category: "Portrait",
         overlay: [
             .init(kind: .grid, gridRows: 3, gridCols: 3),
-            .init(kind: .ellipse, rect: CGRect(x: 0.55, y: 0.25, width: 0.08, height: 0.08)),
-            .init(kind: .ellipse, rect: CGRect(x: 0.55, y: 0.45, width: 0.08, height: 0.08))
+            .init(kind: .ellipse, rect: CGRect(x: 0.30, y: 0.25, width: 0.08, height: 0.05)),
+            .init(kind: .ellipse, rect: CGRect(x: 0.62, y: 0.25, width: 0.08, height: 0.05))
         ],
         preset: Preset(
             name: "Soft Portrait",
@@ -70,12 +121,14 @@ struct SampleTemplates {
             vibrance: 0.2,
             saturation: 1.05,
             contrast: 1.03
-        )
+        ),
+        isPopular: true
     )
 
     static let foodOverhead = PhotoTemplate(
-        name: "Food Overhead (Flat Lay)",
-        description: "Top-down grid with plate center and radial guide.",
+        name: "Flat Lay",
+        description: "Perfect overhead view for food and product photography",
+        category: "Food",
         overlay: [
             .init(kind: .grid, gridRows: 2, gridCols: 2),
             .init(kind: .ellipse, rect: CGRect(x: 0.25, y: 0.25, width: 0.5, height: 0.5)),
@@ -90,10 +143,153 @@ struct SampleTemplates {
             vibrance: 0.25,
             saturation: 1.08,
             contrast: 1.07
-        )
+        ),
+        isPopular: true
     )
 
-    static let all: [PhotoTemplate] = [ruleOfThirdsPortrait, foodOverhead]
+    static let goldenRatioLandscape = PhotoTemplate(
+        name: "Golden Hour",
+        description: "Golden ratio spiral for stunning landscape compositions",
+        category: "Landscape",
+        overlay: [
+            .init(kind: .grid, gridRows: 3, gridCols: 3),
+            .init(kind: .path, points: [
+                CGPoint(x: 0.0, y: 0.618),
+                CGPoint(x: 1.0, y: 0.618)
+            ])
+        ],
+        preset: Preset(
+            name: "Warm Landscape",
+            exposureBias: -0.2,
+            temperature: 5800,
+            tint: 5,
+            exposureEV: -0.1,
+            vibrance: 0.3,
+            saturation: 1.1,
+            contrast: 1.05
+        ),
+        isPopular: true
+    )
+
+    static let symmetricalArchitecture = PhotoTemplate(
+        name: "Symmetry",
+        description: "Perfect symmetry for architectural and geometric shots",
+        category: "Architecture",
+        overlay: [
+            .init(kind: .path, points: [CGPoint(x: 0.5, y: 0.0), CGPoint(x: 0.5, y: 1.0)]),
+            .init(kind: .path, points: [CGPoint(x: 0.0, y: 0.5), CGPoint(x: 1.0, y: 0.5)]),
+            .init(kind: .grid, gridRows: 4, gridCols: 4)
+        ],
+        preset: Preset(
+            name: "Sharp Architecture",
+            exposureBias: -0.3,
+            temperature: 5500,
+            tint: 0,
+            exposureEV: 0.0,
+            vibrance: 0.1,
+            saturation: 0.95,
+            contrast: 1.15
+        ),
+        isPopular: false
+    )
+
+    static let centerFocus = PhotoTemplate(
+        name: "Center Stage",
+        description: "Center composition for powerful, focused subjects",
+        category: "Product",
+        overlay: [
+            .init(kind: .ellipse, rect: CGRect(x: 0.25, y: 0.25, width: 0.5, height: 0.5)),
+            .init(kind: .ellipse, rect: CGRect(x: 0.35, y: 0.35, width: 0.3, height: 0.3))
+        ],
+        preset: Preset(
+            name: "Clean Product",
+            exposureBias: 0.5,
+            temperature: 5000,
+            tint: -2,
+            exposureEV: 0.3,
+            vibrance: 0.15,
+            saturation: 1.0,
+            contrast: 1.08
+        ),
+        isPopular: false
+    )
+
+    static let diagonalDynamic = PhotoTemplate(
+        name: "Dynamic Diagonal",
+        description: "Diagonal leading lines for action and movement",
+        category: "Action",
+        overlay: [
+            .init(kind: .path, points: [CGPoint(x: 0.0, y: 0.0), CGPoint(x: 1.0, y: 1.0)]),
+            .init(kind: .path, points: [CGPoint(x: 0.0, y: 1.0), CGPoint(x: 1.0, y: 0.0)]),
+            .init(kind: .grid, gridRows: 3, gridCols: 3)
+        ],
+        preset: Preset(
+            name: "Energetic",
+            exposureBias: 0.0,
+            temperature: 5400,
+            tint: 0,
+            exposureEV: 0.0,
+            vibrance: 0.35,
+            saturation: 1.12,
+            contrast: 1.1
+        ),
+        isPopular: true
+    )
+
+    static let minimalist = PhotoTemplate(
+        name: "Minimalist",
+        description: "Negative space composition for clean, minimal aesthetics",
+        category: "Minimal",
+        overlay: [
+            .init(kind: .rect, rect: CGRect(x: 0.6, y: 0.6, width: 0.3, height: 0.3)),
+            .init(kind: .path, points: [CGPoint(x: 0.0, y: 0.618), CGPoint(x: 1.0, y: 0.618)])
+        ],
+        preset: Preset(
+            name: "Soft Minimal",
+            exposureBias: 0.7,
+            temperature: 5100,
+            tint: -3,
+            exposureEV: 0.4,
+            vibrance: 0.0,
+            saturation: 0.85,
+            contrast: 0.95
+        ),
+        isPopular: false
+    )
+
+    static let frameWithin = PhotoTemplate(
+        name: "Frame Within",
+        description: "Natural framing for depth and focus",
+        category: "Creative",
+        overlay: [
+            .init(kind: .rect, rect: CGRect(x: 0.15, y: 0.15, width: 0.7, height: 0.7)),
+            .init(kind: .rect, rect: CGRect(x: 0.3, y: 0.3, width: 0.4, height: 0.4))
+        ],
+        preset: Preset(
+            name: "Depth Focus",
+            exposureBias: 0.2,
+            temperature: 5300,
+            tint: 0,
+            exposureEV: 0.1,
+            vibrance: 0.2,
+            saturation: 1.05,
+            contrast: 1.06
+        ),
+        isPopular: true
+    )
+
+    static let all: [PhotoTemplate] = [
+        ruleOfThirdsPortrait,
+        foodOverhead,
+        goldenRatioLandscape,
+        symmetricalArchitecture,
+        centerFocus,
+        diagonalDynamic,
+        minimalist,
+        frameWithin
+    ]
+
+    static let popular: [PhotoTemplate] = all.filter { $0.isPopular }
 }
 
 // MARK: - Camera Manager
@@ -135,7 +331,6 @@ final class CameraManager: NSObject, ObservableObject, AVCapturePhotoCaptureDele
             self.session.beginConfiguration()
             self.session.sessionPreset = .photo
 
-            // Input
             guard let device = AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: .back) else {
                 print("No back camera")
                 self.session.commitConfiguration()
@@ -149,7 +344,6 @@ final class CameraManager: NSObject, ObservableObject, AVCapturePhotoCaptureDele
                 print("Input error: \(error)")
             }
 
-            // Output
             if self.session.canAddOutput(self.photoOutput) {
                 self.session.addOutput(self.photoOutput)
                 #if os(iOS)
@@ -163,17 +357,22 @@ final class CameraManager: NSObject, ObservableObject, AVCapturePhotoCaptureDele
 
     func start() {
         sessionQueue.async {
-            if !self.session.isRunning { self.session.startRunning(); DispatchQueue.main.async { self.isSessionRunning = true } }
+            if !self.session.isRunning {
+                self.session.startRunning()
+                DispatchQueue.main.async { self.isSessionRunning = true }
+            }
         }
     }
 
     func stop() {
         sessionQueue.async {
-            if self.session.isRunning { self.session.stopRunning(); DispatchQueue.main.async { self.isSessionRunning = false } }
+            if self.session.isRunning {
+                self.session.stopRunning()
+                DispatchQueue.main.async { self.isSessionRunning = false }
+            }
         }
     }
 
-    // Live device-level tuning
     private func applyLivePreset() {
         guard let device = videoDevice, let preset = activePreset else { return }
         sessionQueue.async {
@@ -188,7 +387,7 @@ final class CameraManager: NSObject, ObservableObject, AVCapturePhotoCaptureDele
                 device.setExposureTargetBias(clamped) { _ in }
             }
 
-            if device.isWhiteBalanceModeSupported(.locked), let temp = preset.temperature { // approximate helper
+            if device.isWhiteBalanceModeSupported(.locked), let temp = preset.temperature {
                 let tint = preset.tint ?? 0
                 let gains = CameraManager.deviceGains(for: device, temperature: temp, tint: tint)
                 device.setWhiteBalanceModeLocked(with: gains, completionHandler: nil)
@@ -199,12 +398,10 @@ final class CameraManager: NSObject, ObservableObject, AVCapturePhotoCaptureDele
         }
     }
 
-    // Helper: convert temperature/tint to device gains
     #if os(iOS)
     static func deviceGains(for device: AVCaptureDevice, temperature: Float, tint: Float) -> AVCaptureDevice.WhiteBalanceGains {
         let tempTint = AVCaptureDevice.WhiteBalanceTemperatureAndTintValues(temperature: temperature, tint: tint)
         var gains = device.deviceWhiteBalanceGains(for: tempTint)
-        // clamp to valid ranges
         gains.redGain = max(1.0, min(gains.redGain, device.maxWhiteBalanceGain))
         gains.greenGain = max(1.0, min(gains.greenGain, device.maxWhiteBalanceGain))
         gains.blueGain = max(1.0, min(gains.blueGain, device.maxWhiteBalanceGain))
@@ -212,7 +409,6 @@ final class CameraManager: NSObject, ObservableObject, AVCapturePhotoCaptureDele
     }
     #endif
 
-    // Capture & post-process
     func capture(preset: Preset?) {
         let settings = AVCapturePhotoSettings()
         #if os(iOS)
@@ -278,7 +474,7 @@ final class CameraManager: NSObject, ObservableObject, AVCapturePhotoCaptureDele
     #endif
 }
 
-// MARK: - Preview Layer Wrapper
+// MARK: - Camera Preview
 #if os(iOS)
 struct CameraPreviewView: UIViewRepresentable {
     @ObservedObject var manager: CameraManager
@@ -305,18 +501,10 @@ struct CameraPreviewView: UIViewRepresentable {
     }
 }
 #else
-// Fallback for macOS - just a placeholder view
 struct CameraPreviewView: View {
     @ObservedObject var manager: CameraManager
-    
     var body: some View {
-        Rectangle()
-            .fill(Color.black)
-            .overlay(
-                Text("Camera Preview\n(Not available on macOS)")
-                    .foregroundColor(.white)
-                    .multilineTextAlignment(.center)
-            )
+        Rectangle().fill(Color.black).overlay(Text("Camera Preview\n(Not available on macOS)").foregroundColor(.white).multilineTextAlignment(.center))
     }
 }
 #endif
@@ -324,8 +512,8 @@ struct CameraPreviewView: View {
 // MARK: - Overlay Renderer
 struct TemplateOverlayView: View {
     var elements: [OverlayElement]
-    var lineWidth: CGFloat = 2
-    var color: Color = .white.opacity(0.8)
+    var lineWidth: CGFloat = 1.5
+    var color: Color = .white.opacity(0.7)
 
     var body: some View {
         GeometryReader { geo in
@@ -334,7 +522,7 @@ struct TemplateOverlayView: View {
                     switch el.kind {
                     case .grid:
                         grid(in: geo.size, rows: el.gridRows, cols: el.gridCols)
-                            .stroke(color, style: StrokeStyle(lineWidth: lineWidth, dash: [6,6]))
+                            .stroke(color, style: StrokeStyle(lineWidth: lineWidth, dash: [8,4]))
                     case .rect:
                         pathForRect(el.rect, in: geo.size).stroke(color, lineWidth: lineWidth)
                     case .ellipse:
@@ -363,22 +551,12 @@ struct TemplateOverlayView: View {
     }
 
     private func pathForRect(_ rect: CGRect, in size: CGSize) -> Path {
-        let r = CGRect(
-            x: rect.origin.x * size.width,
-            y: rect.origin.y * size.height,
-            width: rect.size.width * size.width,
-            height: rect.size.height * size.height
-        )
+        let r = CGRect(x: rect.origin.x * size.width, y: rect.origin.y * size.height, width: rect.size.width * size.width, height: rect.size.height * size.height)
         return Path(roundedRect: r, cornerRadius: 4)
     }
 
     private func pathForEllipse(_ rect: CGRect, in size: CGSize) -> Path {
-        let r = CGRect(
-            x: rect.origin.x * size.width,
-            y: rect.origin.y * size.height,
-            width: rect.size.width * size.width,
-            height: rect.size.height * size.height
-        )
+        let r = CGRect(x: rect.origin.x * size.width, y: rect.origin.y * size.height, width: rect.size.width * size.width, height: rect.size.height * size.height)
         var p = Path()
         p.addEllipse(in: r)
         return p
@@ -401,122 +579,819 @@ struct TemplateOverlayView: View {
     }
 }
 
-// MARK: - UI
-struct ContentView: View {
-    @StateObject private var camera = CameraManager()
-    @State private var templates: [PhotoTemplate] = SampleTemplates.all
-    @State private var currentTemplateIndex: Int = 0
-    @State private var showGallery = false
-    @State private var overlayOpacity: Double = 0.9
+// MARK: - Main Tab View
+struct MainTabView: View {
+    @EnvironmentObject var appState: AppState
+    @State private var selectedTab = 0
 
-    private var currentTemplate: PhotoTemplate { templates[currentTemplateIndex] }
+    var body: some View {
+        TabView(selection: $selectedTab) {
+            CameraTabView()
+                .tabItem {
+                    Label("Camera", systemImage: "camera.fill")
+                }
+                .tag(0)
+
+            TemplateLibraryView()
+                .tabItem {
+                    Label("Templates", systemImage: "square.grid.2x2.fill")
+                }
+                .tag(1)
+
+            ProfileView()
+                .tabItem {
+                    Label("Profile", systemImage: "person.fill")
+                }
+                .tag(2)
+        }
+        .accentColor(.primary)
+    }
+}
+
+// MARK: - Camera Tab View
+struct CameraTabView: View {
+    @EnvironmentObject var appState: AppState
+    @StateObject private var camera = CameraManager()
+    @State private var overlayOpacity: Double = 0.8
+    @State private var showPhotoPreview = false
+
+    var currentTemplate: PhotoTemplate {
+        appState.selectedTemplate ?? SampleTemplates.all[0]
+    }
 
     var body: some View {
         ZStack {
-            CameraPreviewView(manager: camera).ignoresSafeArea()
+            Color.black.ignoresSafeArea()
 
-            // Overlay
-            TemplateOverlayView(elements: currentTemplate.overlay)
-                .opacity(overlayOpacity)
-                .overlay(alignment: .topLeading) {
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text(currentTemplate.name).font(.headline).padding(.top, 8)
-                        Text(currentTemplate.description).font(.caption)
-                    }
-                    .padding(12)
-                    .background(.black.opacity(0.4))
-                    .foregroundStyle(.white)
-                    .clipShape(RoundedRectangle(cornerRadius: 12))
-                    .padding()
-                }
+            // Camera Preview
+            CameraPreviewView(manager: camera)
+                .ignoresSafeArea()
 
-            // Controls
+            // Template Overlay
+            if overlayOpacity > 0 {
+                TemplateOverlayView(elements: currentTemplate.overlay)
+                    .opacity(overlayOpacity)
+            }
+
+            // UI Controls
             VStack {
+                // Top Info Bar
+                HStack {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(currentTemplate.name)
+                            .font(.system(size: 18, weight: .semibold, design: .rounded))
+                        Text(currentTemplate.description)
+                            .font(.system(size: 12, weight: .regular, design: .rounded))
+                            .opacity(0.9)
+                    }
+                    .foregroundColor(.white)
+                    .padding(16)
+                    .background(
+                        RoundedRectangle(cornerRadius: 16)
+                            .fill(.ultraThinMaterial)
+                            .opacity(0.7)
+                    )
+
+                    Spacer()
+                }
+                .padding()
+
                 Spacer()
-                controlBar
-            }
-        }
-        .onAppear { camera.start(); camera.activePreset = currentTemplate.preset }
-        .onDisappear { camera.stop() }
-    }
 
-    private var controlBar: some View {
-        HStack(spacing: 12) {
-            // Template picker
-            Menu {
-                ForEach(templates.indices, id: \.self) { idx in
-                    Button(action: { selectTemplate(idx) }) {
-                        Label(templates[idx].name, systemImage: idx == currentTemplateIndex ? "checkmark" : "")
+                // Popular Templates Carousel
+                VStack(spacing: 12) {
+                    HStack {
+                        Text("Popular Templates")
+                            .font(.system(size: 14, weight: .medium, design: .rounded))
+                            .foregroundColor(.white.opacity(0.9))
+                        Spacer()
+                    }
+                    .padding(.horizontal, 20)
+
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(spacing: 12) {
+                            ForEach(SampleTemplates.popular) { template in
+                                TemplatePreviewCard(template: template, isSelected: template.id == currentTemplate.id)
+                                    .onTapGesture {
+                                        selectTemplate(template)
+                                    }
+                            }
+                        }
+                        .padding(.horizontal, 20)
                     }
                 }
-            } label: {
-                labelCapsule(title: "Template", system: "square.grid.3x3")
-            }
+                .padding(.bottom, 16)
 
-            // Opacity
-            HStack(spacing: 8) {
-                Image(systemName: "eye")
-                Slider(value: $overlayOpacity, in: 0...1)
-            }
-            .padding(10)
-            .background(.black.opacity(0.4))
-            .foregroundStyle(.white)
-            .clipShape(Capsule())
+                // Bottom Controls
+                HStack(spacing: 20) {
+                    // Overlay Opacity Control
+                    VStack(spacing: 8) {
+                        Image(systemName: overlayOpacity > 0.5 ? "eye.fill" : "eye.slash.fill")
+                            .font(.system(size: 16))
+                        Slider(value: $overlayOpacity, in: 0...1)
+                            .frame(width: 80)
+                            .accentColor(.white)
+                    }
+                    .foregroundColor(.white)
 
-            // Capture
-            Button(action: { camera.capture(preset: currentTemplate.preset) }) {
-                Circle().stroke(.white, lineWidth: 6).frame(width: 72, height: 72)
-                    .overlay(Circle().fill(.white.opacity(0.2)).frame(width: 56, height: 56))
-            }
+                    Spacer()
 
-            // Last photo preview
-            if let img = camera.latestPhoto {
-                Button { showGallery.toggle() } label: {
-                    #if canImport(UIKit)
-                    Image(uiImage: img).resizable().scaledToFill().frame(width: 48, height: 48).clipped().cornerRadius(6)
-                    #else
-                    Image(nsImage: img).resizable().scaledToFill().frame(width: 48, height: 48).clipped().cornerRadius(6)
-                    #endif
-                }
-                .sheet(isPresented: $showGallery) {
-                    VStack { 
-                        #if canImport(UIKit)
-                        Image(uiImage: img).resizable().scaledToFit()
-                        #else
-                        Image(nsImage: img).resizable().scaledToFit()
+                    // Capture Button
+                    Button(action: {
+                        camera.capture(preset: currentTemplate.preset)
+                        #if os(iOS)
+                        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
                         #endif
-                        Text("Saved to Photos").padding() 
+                    }) {
+                        ZStack {
+                            Circle()
+                                .stroke(.white, lineWidth: 5)
+                                .frame(width: 75, height: 75)
+                            Circle()
+                                .fill(.white.opacity(0.3))
+                                .frame(width: 60, height: 60)
+                        }
                     }
-                    .presentationDetents([.medium, .large])
+
+                    Spacer()
+
+                    // Last Photo Preview
+                    if let img = camera.latestPhoto {
+                        Button {
+                            showPhotoPreview.toggle()
+                        } label: {
+                            #if canImport(UIKit)
+                            Image(uiImage: img)
+                                .resizable()
+                                .scaledToFill()
+                                .frame(width: 50, height: 50)
+                                .clipShape(RoundedRectangle(cornerRadius: 10))
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 10)
+                                        .stroke(.white, lineWidth: 2)
+                                )
+                            #else
+                            Image(nsImage: img)
+                                .resizable()
+                                .scaledToFill()
+                                .frame(width: 50, height: 50)
+                                .clipShape(RoundedRectangle(cornerRadius: 10))
+                            #endif
+                        }
+                        .sheet(isPresented: $showPhotoPreview) {
+                            PhotoPreviewSheet(image: img)
+                        }
+                    } else {
+                        RoundedRectangle(cornerRadius: 10)
+                            .fill(.white.opacity(0.2))
+                            .frame(width: 50, height: 50)
+                    }
                 }
+                .padding(.horizontal, 24)
+                .padding(.bottom, 32)
             }
         }
-        .padding(.horizontal, 12)
-        .padding(.bottom, 24)
+        .onAppear {
+            camera.start()
+            camera.activePreset = currentTemplate.preset
+        }
+        .onDisappear {
+            camera.stop()
+        }
     }
 
-    private func labelCapsule(title: String, system: String) -> some View {
-        HStack(spacing: 8) { Image(systemName: system); Text(title) }
-            .padding(10)
-            .background(.black.opacity(0.4))
-            .foregroundStyle(.white)
-            .clipShape(Capsule())
-    }
-
-    private func selectTemplate(_ idx: Int) {
-        currentTemplateIndex = idx
-        camera.activePreset = templates[idx].preset
+    private func selectTemplate(_ template: PhotoTemplate) {
+        appState.selectedTemplate = template
+        camera.activePreset = template.preset
         #if os(iOS)
         UIImpactFeedbackGenerator(style: .light).impactOccurred()
         #endif
     }
 }
 
-/*
- Notes:
- - Live "presets" are approximated via exposure bias and white balance lock; exact ISO/shutter control requires custom exposure configuration and is constrained in AVCapture.
- - Additional overlays can be defined with normalized coordinates in PhotoTemplate.overlay.
- - Extend Preset with more CI filters (e.g., clarity/sharpening via CIUnsharpMask, highlights/shadows via CIHighlightShadowAdjust).
- - Consider using AVCapturePhotoSettings.embeddedThumbnailPhotoFormat to speed up preview.
- - For PRO modes, enable manual exposure/ISO where supported, with device.setExposureModeCustom().
- */
+// MARK: - Template Preview Card (for bottom carousel)
+struct TemplatePreviewCard: View {
+    let template: PhotoTemplate
+    var isSelected: Bool
+
+    var body: some View {
+        VStack(spacing: 6) {
+            ZStack {
+                RoundedRectangle(cornerRadius: 12)
+                    .fill(.white.opacity(0.15))
+                    .frame(width: 80, height: 80)
+
+                TemplateOverlayView(elements: template.overlay, lineWidth: 1, color: .white.opacity(0.8))
+                    .frame(width: 70, height: 70)
+            }
+            .overlay(
+                RoundedRectangle(cornerRadius: 12)
+                    .stroke(isSelected ? Color.white : Color.clear, lineWidth: 2)
+            )
+
+            Text(template.name)
+                .font(.system(size: 10, weight: .medium, design: .rounded))
+                .foregroundColor(.white)
+                .lineLimit(1)
+                .frame(width: 80)
+        }
+    }
+}
+
+// MARK: - Photo Preview Sheet
+struct PhotoPreviewSheet: View {
+    #if canImport(UIKit)
+    let image: UIImage
+    #else
+    let image: NSImage
+    #endif
+    @Environment(\.dismiss) var dismiss
+
+    var body: some View {
+        ZStack {
+            Color.black.ignoresSafeArea()
+
+            VStack {
+                HStack {
+                    Spacer()
+                    Button(action: { dismiss() }) {
+                        Image(systemName: "xmark.circle.fill")
+                            .font(.system(size: 28))
+                            .foregroundColor(.white.opacity(0.8))
+                    }
+                    .padding()
+                }
+
+                #if canImport(UIKit)
+                Image(uiImage: image)
+                    .resizable()
+                    .scaledToFit()
+                #else
+                Image(nsImage: image)
+                    .resizable()
+                    .scaledToFit()
+                #endif
+
+                Text("Saved to Photos")
+                    .font(.system(size: 16, weight: .medium, design: .rounded))
+                    .foregroundColor(.white)
+                    .padding()
+            }
+        }
+    }
+}
+
+// MARK: - Template Library View
+struct TemplateLibraryView: View {
+    @EnvironmentObject var appState: AppState
+    @State private var selectedCategory = "All"
+    @State private var showTemplateDetail: PhotoTemplate? = nil
+
+    var categories: [String] {
+        var cats = Set(appState.templates.map { $0.category })
+        cats.insert("All")
+        return ["All"] + cats.sorted()
+    }
+
+    var filteredTemplates: [PhotoTemplate] {
+        if selectedCategory == "All" {
+            return appState.templates
+        } else {
+            return appState.templates.filter { $0.category == selectedCategory }
+        }
+    }
+
+    let columns = [
+        GridItem(.flexible(), spacing: 16),
+        GridItem(.flexible(), spacing: 16)
+    ]
+
+    var body: some View {
+        NavigationView {
+            ZStack {
+                Color(uiColor: UIColor.systemGroupedBackground)
+                    .ignoresSafeArea()
+
+                VStack(spacing: 0) {
+                    // Category Filter
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(spacing: 12) {
+                            ForEach(categories, id: \.self) { category in
+                                Button(action: {
+                                    selectedCategory = category
+                                    #if os(iOS)
+                                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                                    #endif
+                                }) {
+                                    Text(category)
+                                        .font(.system(size: 14, weight: .medium, design: .rounded))
+                                        .foregroundColor(selectedCategory == category ? .white : .primary)
+                                        .padding(.horizontal, 16)
+                                        .padding(.vertical, 8)
+                                        .background(
+                                            Capsule()
+                                                .fill(selectedCategory == category ? Color.black : Color.white)
+                                        )
+                                }
+                            }
+                        }
+                        .padding(.horizontal, 20)
+                        .padding(.vertical, 12)
+                    }
+                    .background(Color(uiColor: UIColor.systemBackground))
+
+                    // Templates Grid
+                    ScrollView {
+                        LazyVGrid(columns: columns, spacing: 16) {
+                            ForEach(filteredTemplates) { template in
+                                TemplateLibraryCard(template: template)
+                                    .onTapGesture {
+                                        showTemplateDetail = template
+                                    }
+                            }
+                        }
+                        .padding(20)
+                    }
+                }
+            }
+            .navigationTitle("Templates")
+            .navigationBarTitleDisplayMode(.large)
+            .sheet(item: $showTemplateDetail) { template in
+                TemplateDetailView(template: template)
+            }
+        }
+    }
+}
+
+// MARK: - Template Library Card
+struct TemplateLibraryCard: View {
+    @EnvironmentObject var appState: AppState
+    let template: PhotoTemplate
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            // Template Preview
+            ZStack {
+                RoundedRectangle(cornerRadius: 16)
+                    .fill(
+                        LinearGradient(
+                            colors: [Color.black.opacity(0.6), Color.black.opacity(0.3)],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        )
+                    )
+                    .frame(height: 180)
+
+                TemplateOverlayView(elements: template.overlay, lineWidth: 1.5, color: .white.opacity(0.7))
+                    .padding(20)
+
+                // Save Button
+                VStack {
+                    HStack {
+                        Spacer()
+                        Button(action: {
+                            appState.toggleSaveTemplate(template)
+                            #if os(iOS)
+                            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                            #endif
+                        }) {
+                            Image(systemName: appState.isSaved(template) ? "bookmark.fill" : "bookmark")
+                                .font(.system(size: 18))
+                                .foregroundColor(.white)
+                                .padding(10)
+                                .background(Circle().fill(.black.opacity(0.4)))
+                        }
+                        .padding(12)
+                    }
+                    Spacer()
+                }
+            }
+
+            // Template Info
+            VStack(alignment: .leading, spacing: 4) {
+                Text(template.name)
+                    .font(.system(size: 16, weight: .semibold, design: .rounded))
+                    .foregroundColor(.primary)
+
+                Text(template.category)
+                    .font(.system(size: 12, weight: .medium, design: .rounded))
+                    .foregroundColor(.secondary)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 3)
+                    .background(Capsule().fill(Color.black.opacity(0.06)))
+            }
+        }
+        .background(
+            RoundedRectangle(cornerRadius: 16)
+                .fill(Color.white)
+                .shadow(color: .black.opacity(0.08), radius: 8, x: 0, y: 4)
+        )
+    }
+}
+
+// MARK: - Template Detail View
+struct TemplateDetailView: View {
+    @EnvironmentObject var appState: AppState
+    @Environment(\.dismiss) var dismiss
+    let template: PhotoTemplate
+
+    var body: some View {
+        NavigationView {
+            ZStack {
+                Color(uiColor: UIColor.systemGroupedBackground)
+                    .ignoresSafeArea()
+
+                ScrollView {
+                    VStack(spacing: 24) {
+                        // Template Preview
+                        ZStack {
+                            RoundedRectangle(cornerRadius: 20)
+                                .fill(
+                                    LinearGradient(
+                                        colors: [Color.black.opacity(0.7), Color.black.opacity(0.4)],
+                                        startPoint: .topLeading,
+                                        endPoint: .bottomTrailing
+                                    )
+                                )
+                                .frame(height: 400)
+
+                            TemplateOverlayView(elements: template.overlay, lineWidth: 2, color: .white.opacity(0.8))
+                                .padding(30)
+                        }
+                        .padding(.horizontal, 20)
+
+                        // Template Info
+                        VStack(alignment: .leading, spacing: 16) {
+                            HStack {
+                                VStack(alignment: .leading, spacing: 8) {
+                                    Text(template.name)
+                                        .font(.system(size: 28, weight: .bold, design: .rounded))
+
+                                    Text(template.category)
+                                        .font(.system(size: 14, weight: .medium, design: .rounded))
+                                        .foregroundColor(.secondary)
+                                        .padding(.horizontal, 12)
+                                        .padding(.vertical, 5)
+                                        .background(Capsule().fill(Color.black.opacity(0.06)))
+                                }
+
+                                Spacer()
+
+                                Button(action: {
+                                    appState.toggleSaveTemplate(template)
+                                    #if os(iOS)
+                                    UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                                    #endif
+                                }) {
+                                    Image(systemName: appState.isSaved(template) ? "bookmark.fill" : "bookmark")
+                                        .font(.system(size: 24))
+                                        .foregroundColor(.primary)
+                                        .padding(12)
+                                        .background(Circle().fill(Color.black.opacity(0.06)))
+                                }
+                            }
+
+                            Text(template.description)
+                                .font(.system(size: 16, weight: .regular, design: .rounded))
+                                .foregroundColor(.secondary)
+                                .lineSpacing(4)
+
+                            Divider()
+                                .padding(.vertical, 8)
+
+                            // Preset Info
+                            VStack(alignment: .leading, spacing: 12) {
+                                Text("Preset Settings")
+                                    .font(.system(size: 18, weight: .semibold, design: .rounded))
+
+                                VStack(spacing: 8) {
+                                    if let ev = template.preset.exposureEV {
+                                        PresetRow(icon: "sun.max.fill", label: "Exposure", value: String(format: "%.1f EV", ev))
+                                    }
+                                    if let sat = template.preset.saturation {
+                                        PresetRow(icon: "slider.horizontal.3", label: "Saturation", value: String(format: "%.0f%%", sat * 100))
+                                    }
+                                    if let vib = template.preset.vibrance {
+                                        PresetRow(icon: "paintbrush.fill", label: "Vibrance", value: String(format: "%.0f%%", vib * 100))
+                                    }
+                                    if let cont = template.preset.contrast {
+                                        PresetRow(icon: "circle.lefthalf.filled", label: "Contrast", value: String(format: "%.0f%%", cont * 100))
+                                    }
+                                }
+                            }
+                        }
+                        .padding(.horizontal, 20)
+
+                        // Apply Button
+                        Button(action: {
+                            appState.selectedTemplate = template
+                            dismiss()
+                        }) {
+                            HStack {
+                                Image(systemName: "camera.fill")
+                                Text("Apply Template")
+                                    .font(.system(size: 18, weight: .semibold, design: .rounded))
+                            }
+                            .foregroundColor(.white)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 16)
+                            .background(
+                                RoundedRectangle(cornerRadius: 16)
+                                    .fill(Color.black)
+                            )
+                        }
+                        .padding(.horizontal, 20)
+                        .padding(.bottom, 32)
+                    }
+                    .padding(.top, 20)
+                }
+            }
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button(action: { dismiss() }) {
+                        Image(systemName: "xmark.circle.fill")
+                            .font(.system(size: 24))
+                            .foregroundColor(.secondary)
+                    }
+                }
+            }
+        }
+    }
+}
+
+// MARK: - Preset Row
+struct PresetRow: View {
+    let icon: String
+    let label: String
+    let value: String
+
+    var body: some View {
+        HStack {
+            Image(systemName: icon)
+                .font(.system(size: 14))
+                .foregroundColor(.secondary)
+                .frame(width: 24)
+
+            Text(label)
+                .font(.system(size: 15, weight: .regular, design: .rounded))
+                .foregroundColor(.primary)
+
+            Spacer()
+
+            Text(value)
+                .font(.system(size: 15, weight: .medium, design: .rounded))
+                .foregroundColor(.secondary)
+        }
+        .padding(.vertical, 8)
+        .padding(.horizontal, 12)
+        .background(
+            RoundedRectangle(cornerRadius: 10)
+                .fill(Color.black.opacity(0.03))
+        )
+    }
+}
+
+// MARK: - Profile View
+struct ProfileView: View {
+    @EnvironmentObject var appState: AppState
+    @State private var isEditingProfile = false
+    @State private var editedUsername = ""
+    @State private var editedBio = ""
+
+    var body: some View {
+        NavigationView {
+            ZStack {
+                Color(uiColor: UIColor.systemGroupedBackground)
+                    .ignoresSafeArea()
+
+                ScrollView {
+                    VStack(spacing: 24) {
+                        // Profile Header
+                        VStack(spacing: 16) {
+                            // Avatar
+                            ZStack {
+                                Circle()
+                                    .fill(
+                                        LinearGradient(
+                                            colors: [Color.black.opacity(0.8), Color.black.opacity(0.5)],
+                                            startPoint: .topLeading,
+                                            endPoint: .bottomTrailing
+                                        )
+                                    )
+                                    .frame(width: 100, height: 100)
+
+                                Image(systemName: "camera.fill")
+                                    .font(.system(size: 40))
+                                    .foregroundColor(.white)
+                            }
+
+                            VStack(spacing: 8) {
+                                Text(appState.userProfile.username)
+                                    .font(.system(size: 24, weight: .bold, design: .rounded))
+
+                                Text(appState.userProfile.bio)
+                                    .font(.system(size: 14, weight: .regular, design: .rounded))
+                                    .foregroundColor(.secondary)
+                                    .multilineTextAlignment(.center)
+                                    .padding(.horizontal, 40)
+                            }
+
+                            Button(action: {
+                                editedUsername = appState.userProfile.username
+                                editedBio = appState.userProfile.bio
+                                isEditingProfile = true
+                            }) {
+                                Text("Edit Profile")
+                                    .font(.system(size: 14, weight: .semibold, design: .rounded))
+                                    .foregroundColor(.primary)
+                                    .padding(.horizontal, 20)
+                                    .padding(.vertical, 8)
+                                    .background(
+                                        Capsule()
+                                            .stroke(Color.black.opacity(0.2), lineWidth: 1)
+                                    )
+                            }
+                        }
+                        .padding(.vertical, 24)
+                        .frame(maxWidth: .infinity)
+                        .background(
+                            RoundedRectangle(cornerRadius: 20)
+                                .fill(Color.white)
+                        )
+                        .padding(.horizontal, 20)
+
+                        // Stats
+                        HStack(spacing: 20) {
+                            StatCard(value: "\(appState.templates.count)", label: "Templates")
+                            StatCard(value: "\(appState.savedTemplates.count)", label: "Saved")
+                        }
+                        .padding(.horizontal, 20)
+
+                        // Saved Templates
+                        VStack(alignment: .leading, spacing: 16) {
+                            HStack {
+                                Text("Saved Templates")
+                                    .font(.system(size: 20, weight: .bold, design: .rounded))
+                                Spacer()
+                            }
+                            .padding(.horizontal, 20)
+
+                            if appState.savedTemplates.isEmpty {
+                                VStack(spacing: 12) {
+                                    Image(systemName: "bookmark")
+                                        .font(.system(size: 48))
+                                        .foregroundColor(.secondary.opacity(0.3))
+
+                                    Text("No saved templates yet")
+                                        .font(.system(size: 16, weight: .medium, design: .rounded))
+                                        .foregroundColor(.secondary)
+
+                                    Text("Browse the template library and save your favorites")
+                                        .font(.system(size: 14, weight: .regular, design: .rounded))
+                                        .foregroundColor(.secondary.opacity(0.7))
+                                        .multilineTextAlignment(.center)
+                                        .padding(.horizontal, 40)
+                                }
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 60)
+                                .background(
+                                    RoundedRectangle(cornerRadius: 20)
+                                        .fill(Color.white)
+                                )
+                                .padding(.horizontal, 20)
+                            } else {
+                                ScrollView(.horizontal, showsIndicators: false) {
+                                    HStack(spacing: 16) {
+                                        ForEach(appState.savedTemplates) { template in
+                                            SavedTemplateCard(template: template)
+                                        }
+                                    }
+                                    .padding(.horizontal, 20)
+                                }
+                            }
+                        }
+                        .padding(.bottom, 32)
+                    }
+                    .padding(.top, 20)
+                }
+            }
+            .navigationTitle("Profile")
+            .navigationBarTitleDisplayMode(.large)
+            .sheet(isPresented: $isEditingProfile) {
+                EditProfileSheet(
+                    username: $editedUsername,
+                    bio: $editedBio,
+                    onSave: {
+                        appState.userProfile.username = editedUsername
+                        appState.userProfile.bio = editedBio
+                        isEditingProfile = false
+                    }
+                )
+            }
+        }
+    }
+}
+
+// MARK: - Stat Card
+struct StatCard: View {
+    let value: String
+    let label: String
+
+    var body: some View {
+        VStack(spacing: 8) {
+            Text(value)
+                .font(.system(size: 28, weight: .bold, design: .rounded))
+            Text(label)
+                .font(.system(size: 14, weight: .medium, design: .rounded))
+                .foregroundColor(.secondary)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 20)
+        .background(
+            RoundedRectangle(cornerRadius: 16)
+                .fill(Color.white)
+        )
+    }
+}
+
+// MARK: - Saved Template Card
+struct SavedTemplateCard: View {
+    @EnvironmentObject var appState: AppState
+    let template: PhotoTemplate
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            ZStack {
+                RoundedRectangle(cornerRadius: 12)
+                    .fill(
+                        LinearGradient(
+                            colors: [Color.black.opacity(0.6), Color.black.opacity(0.3)],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        )
+                    )
+                    .frame(width: 140, height: 140)
+
+                TemplateOverlayView(elements: template.overlay, lineWidth: 1.2, color: .white.opacity(0.7))
+                    .frame(width: 130, height: 130)
+            }
+
+            Text(template.name)
+                .font(.system(size: 13, weight: .semibold, design: .rounded))
+                .foregroundColor(.primary)
+                .lineLimit(1)
+                .frame(width: 140)
+        }
+        .onTapGesture {
+            appState.selectedTemplate = template
+        }
+    }
+}
+
+// MARK: - Edit Profile Sheet
+struct EditProfileSheet: View {
+    @Binding var username: String
+    @Binding var bio: String
+    var onSave: () -> Void
+    @Environment(\.dismiss) var dismiss
+
+    var body: some View {
+        NavigationView {
+            Form {
+                Section(header: Text("Username")) {
+                    TextField("Enter username", text: $username)
+                        .font(.system(.body, design: .rounded))
+                }
+
+                Section(header: Text("Bio")) {
+                    TextEditor(text: $bio)
+                        .font(.system(.body, design: .rounded))
+                        .frame(height: 100)
+                }
+            }
+            .navigationTitle("Edit Profile")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .navigationBarLeading) {
+                    Button("Cancel") {
+                        dismiss()
+                    }
+                }
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button("Save") {
+                        onSave()
+                    }
+                    .fontWeight(.semibold)
+                }
+            }
+        }
+    }
+}
+
+// MARK: - ContentView (keeping for compatibility)
+struct ContentView: View {
+    var body: some View {
+        MainTabView()
+    }
+}

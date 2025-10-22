@@ -1,5 +1,12 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
-<dict/>
+<dict>
+	<key>NSCameraUsageDescription</key>
+	<string>TemplateCam needs access to your camera to take photos with composition templates.</string>
+	<key>NSPhotoLibraryAddUsageDescription</key>
+	<string>TemplateCam needs access to save your photos to the photo library.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>TemplateCam needs access to your photo library to save your photos.</string>
+</dict>
 </plist>
