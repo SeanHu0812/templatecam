@@ -115,8 +115,6 @@ struct SampleTemplates {
         preset: Preset(
             name: "Soft Portrait",
             exposureBias: 0.3,
-            temperature: 5200,
-            tint: 0,
             exposureEV: 0.2,
             vibrance: 0.2,
             saturation: 1.05,
@@ -137,8 +135,6 @@ struct SampleTemplates {
         preset: Preset(
             name: "Crisp Food",
             exposureBias: 0.1,
-            temperature: 4800,
-            tint: -5,
             exposureEV: 0.1,
             vibrance: 0.25,
             saturation: 1.08,
@@ -161,8 +157,6 @@ struct SampleTemplates {
         preset: Preset(
             name: "Warm Landscape",
             exposureBias: -0.2,
-            temperature: 5800,
-            tint: 5,
             exposureEV: -0.1,
             vibrance: 0.3,
             saturation: 1.1,
@@ -183,8 +177,6 @@ struct SampleTemplates {
         preset: Preset(
             name: "Sharp Architecture",
             exposureBias: -0.3,
-            temperature: 5500,
-            tint: 0,
             exposureEV: 0.0,
             vibrance: 0.1,
             saturation: 0.95,
@@ -204,8 +196,6 @@ struct SampleTemplates {
         preset: Preset(
             name: "Clean Product",
             exposureBias: 0.5,
-            temperature: 5000,
-            tint: -2,
             exposureEV: 0.3,
             vibrance: 0.15,
             saturation: 1.0,
@@ -226,8 +216,6 @@ struct SampleTemplates {
         preset: Preset(
             name: "Energetic",
             exposureBias: 0.0,
-            temperature: 5400,
-            tint: 0,
             exposureEV: 0.0,
             vibrance: 0.35,
             saturation: 1.12,
@@ -247,8 +235,6 @@ struct SampleTemplates {
         preset: Preset(
             name: "Soft Minimal",
             exposureBias: 0.7,
-            temperature: 5100,
-            tint: -3,
             exposureEV: 0.4,
             vibrance: 0.0,
             saturation: 0.85,
@@ -268,8 +254,6 @@ struct SampleTemplates {
         preset: Preset(
             name: "Depth Focus",
             exposureBias: 0.2,
-            temperature: 5300,
-            tint: 0,
             exposureEV: 0.1,
             vibrance: 0.2,
             saturation: 1.05,
@@ -387,10 +371,9 @@ final class CameraManager: NSObject, ObservableObject, AVCapturePhotoCaptureDele
                 device.setExposureTargetBias(clamped) { _ in }
             }
 
-            if device.isWhiteBalanceModeSupported(.locked), let temp = preset.temperature {
-                let tint = preset.tint ?? 0
-                let gains = CameraManager.deviceGains(for: device, temperature: temp, tint: tint)
-                device.setWhiteBalanceModeLocked(with: gains, completionHandler: nil)
+            // Use continuous auto white balance instead of locking
+            if device.isWhiteBalanceModeSupported(.continuousAutoWhiteBalance) {
+                device.whiteBalanceMode = .continuousAutoWhiteBalance
             }
             #endif
 
@@ -447,9 +430,6 @@ final class CameraManager: NSObject, ObservableObject, AVCapturePhotoCaptureDele
         if let ev = preset.exposureEV {
             let f = CIFilter.exposureAdjust(); f.inputImage = output; f.ev = ev; output = f.outputImage ?? output
         }
-        if let ts = preset.temperatureShift, let tt = preset.tintShift {
-            let f = CIFilter.temperatureAndTint(); f.inputImage = output; f.neutral = CIVector(x: CGFloat(6500 + ts), y: CGFloat(0 + tt)); output = f.outputImage ?? output
-        }
         if let v = preset.vibrance {
             let f = CIFilter.vibrance(); f.inputImage = output; f.amount = v; output = f.outputImage ?? output
         }
@@ -487,7 +467,7 @@ struct CameraPreviewView: UIViewRepresentable {
         init(session: AVCaptureSession) {
             self.videoPreviewLayer = AVCaptureVideoPreviewLayer(session: session)
             super.init(frame: .zero)
-            videoPreviewLayer.videoGravity = .resizeAspectFill
+            videoPreviewLayer.videoGravity = .resizeAspect
             layer.addSublayer(videoPreviewLayer)
         }
         required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
