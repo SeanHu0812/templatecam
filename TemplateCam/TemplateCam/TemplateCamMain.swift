@@ -603,14 +603,19 @@ struct CameraTabView: View {
         ZStack {
             Color.black.ignoresSafeArea()
 
-            // Camera Preview
-            CameraPreviewView(manager: camera)
-                .ignoresSafeArea()
-
-            // Template Overlay
-            if overlayOpacity > 0 {
-                TemplateOverlayView(elements: currentTemplate.overlay)
-                    .opacity(overlayOpacity)
+            // Camera Preview with 16:9 aspect ratio
+            VStack {
+                CameraPreviewView(manager: camera)
+                    .aspectRatio(16/9, contentMode: .fit)
+                    .overlay(
+                        // Template Overlay
+                        Group {
+                            if overlayOpacity > 0 {
+                                TemplateOverlayView(elements: currentTemplate.overlay)
+                                    .opacity(overlayOpacity)
+                            }
+                        }
+                    )
             }
 
             // UI Controls
