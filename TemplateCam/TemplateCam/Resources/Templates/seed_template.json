@@ -1,0 +1,48 @@
+{
+  "id": "seed_001",
+  "v": 1,
+  "frame": {
+    "aspectRatio": "device"
+  },
+  "subject": {
+    "bbox": {
+      "x": 0.28,
+      "y": 0.12,
+      "w": 0.44,
+      "h": 0.68
+    },
+    "targetBoxHeightPct": 0.68,
+    "keybones": [
+      ["left_shoulder", "right_shoulder"],
+      ["right_shoulder", "right_hip"],
+      ["left_shoulder", "left_hip"],
+      ["right_hip", "right_knee"],
+      ["left_hip", "left_knee"]
+    ]
+  },
+  "background": {
+    "horizonY": 0.6,
+    "dominantLines": [
+      [[0.1, 0.6], [0.9, 0.6]]
+    ]
+  },
+  "cameraTargets": {
+    "preferLenses": ["wide", "ultrawide", "tele"],
+    "zoomFactor": 1.0,
+    "flash": "off",
+    "exposureBiasEV": 0.0,
+    "wb": {
+      "temperature": 5500,
+      "tint": 0
+    },
+    "tone": {
+      "exposureEV": 0.0,
+      "contrast": 1.0,
+      "highlights": 0.0,
+      "shadows": 0.0,
+      "saturation": 1.0,
+      "vibrance": 0.0,
+      "sharpness": 0.0
+    }
+  }
+}
