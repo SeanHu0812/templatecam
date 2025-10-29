@@ -7,6 +7,7 @@ import AVFoundation
 import Photos
 import CoreImage
 import CoreImage.CIFilterBuiltins
+import ImageIO
 
 @main
 struct TemplateCamApp: App {
@@ -20,18 +21,68 @@ struct TemplateCamApp: App {
     }
 }
 
+// MARK: - Persistence Manager
+class PersistenceManager {
+    static let shared = PersistenceManager()
+
+    private let userProfileKey = "userProfile"
+    private let savedTemplateIdsKey = "savedTemplateIds"
+
+    func saveUserProfile(_ profile: UserProfile) {
+        if let encoded = try? JSONEncoder().encode(profile) {
+            UserDefaults.standard.set(encoded, forKey: userProfileKey)
+        }
+    }
+
+    func loadUserProfile() -> UserProfile? {
+        guard let data = UserDefaults.standard.data(forKey: userProfileKey),
+              let profile = try? JSONDecoder().decode(UserProfile.self, from: data) else {
+            return nil
+        }
+        return profile
+    }
+
+    func saveSavedTemplateIds(_ ids: [UUID]) {
+        let idStrings = ids.map { $0.uuidString }
+        UserDefaults.standard.set(idStrings, forKey: savedTemplateIdsKey)
+    }
+
+    func loadSavedTemplateIds() -> [UUID] {
+        guard let idStrings = UserDefaults.standard.array(forKey: savedTemplateIdsKey) as? [String] else {
+            return []
+        }
+        return idStrings.compactMap { UUID(uuidString: $0) }
+    }
+}
+
 // MARK: - App State
 class AppState: ObservableObject {
-    @Published var userProfile: UserProfile
+    @Published var userProfile: UserProfile {
+        didSet {
+            PersistenceManager.shared.saveUserProfile(userProfile)
+        }
+    }
     @Published var templates: [PhotoTemplate]
     @Published var selectedTemplate: PhotoTemplate?
 
     init() {
-        self.userProfile = UserProfile(
-            username: "PhotoEnthusiast",
-            bio: "Capturing moments with perfect composition",
-            savedTemplateIds: []
-        )
+        // Load user profile from persistence or use default
+        if let savedProfile = PersistenceManager.shared.loadUserProfile() {
+            self.userProfile = savedProfile
+        } else {
+            self.userProfile = UserProfile(
+                username: "PhotoEnthusiast",
+                bio: "Capturing moments with perfect composition",
+                savedTemplateIds: []
+            )
+        }
+
+        // Load saved template IDs
+        let savedIds = PersistenceManager.shared.loadSavedTemplateIds()
+        if !savedIds.isEmpty {
+            self.userProfile.savedTemplateIds = savedIds
+        }
+
         self.templates = SampleTemplates.all
     }
 
@@ -41,6 +92,7 @@ class AppState: ObservableObject {
         } else {
             userProfile.savedTemplateIds.append(template.id)
         }
+        PersistenceManager.shared.saveSavedTemplateIds(userProfile.savedTemplateIds)
     }
 
     func isSaved(_ template: PhotoTemplate) -> Bool {
@@ -81,6 +133,11 @@ struct Preset: Identifiable, Codable {
     var vibrance: Float? = nil
     var saturation: Float? = nil
     var contrast: Float? = nil
+    var highlights: Float? = nil
+    var shadows: Float? = nil
+    var clarity: Float? = nil
+    var lutFileName: String? = nil
+    var lutIntensity: Float? = nil
 }
 
 struct PhotoTemplate: Identifiable, Codable, Hashable {
@@ -99,6 +156,122 @@ struct PhotoTemplate: Identifiable, Codable, Hashable {
     func hash(into hasher: inout Hasher) {
         hasher.combine(id)
     }
+}
+
+// MARK: - Template Loader
+class TemplateLoader {
+    static let shared = TemplateLoader()
+
+    func loadTemplates() -> [PhotoTemplate] {
+        guard let url = Bundle.main.url(forResource: "Templates", withExtension: "json") else {
+            print("Templates.json not found, using hardcoded templates")
+            return SampleTemplates.hardcodedTemplates
+        }
+
+        do {
+            let data = try Data(contentsOf: url)
+            let decoder = JSONDecoder()
+            let templateData = try decoder.decode(TemplateData.self, from: data)
+
+            return templateData.templates.map { jsonTemplate in
+                PhotoTemplate(
+                    id: UUID(uuidString: jsonTemplate.id) ?? UUID(),
+                    name: jsonTemplate.name,
+                    description: jsonTemplate.description,
+                    category: jsonTemplate.category,
+                    overlay: jsonTemplate.overlay.elements.map { element in
+                        OverlayElement(
+                            kind: OverlayElement.Kind(rawValue: element.kind) ?? .line,
+                            points: element.points?.map { CGPoint(x: $0.x, y: $0.y) } ?? [],
+                            rect: element.rect.map { CGRect(x: $0.x, y: $0.y, width: $0.width, height: $0.height) } ?? .zero,
+                            gridRows: element.gridRows ?? 0,
+                            gridCols: element.gridCols ?? 0
+                        )
+                    },
+                    preset: Preset(
+                        name: jsonTemplate.preset.name,
+                        exposureBias: jsonTemplate.preset.exposureBias,
+                        temperature: jsonTemplate.preset.temperature,
+                        tint: jsonTemplate.preset.tint,
+                        exposureEV: jsonTemplate.preset.exposureEV,
+                        temperatureShift: jsonTemplate.preset.temperatureShift,
+                        tintShift: jsonTemplate.preset.tintShift,
+                        vibrance: jsonTemplate.preset.vibrance,
+                        saturation: jsonTemplate.preset.saturation,
+                        contrast: jsonTemplate.preset.contrast,
+                        highlights: jsonTemplate.preset.highlights,
+                        shadows: jsonTemplate.preset.shadows,
+                        clarity: jsonTemplate.preset.clarity,
+                        lutFileName: jsonTemplate.preset.lutFileName,
+                        lutIntensity: jsonTemplate.preset.lutIntensity
+                    ),
+                    isPopular: jsonTemplate.isPopular
+                )
+            }
+        } catch {
+            print("Error loading templates: \(error)")
+            return SampleTemplates.hardcodedTemplates
+        }
+    }
+}
+
+// MARK: - Template JSON Models
+struct TemplateData: Codable {
+    let version: String
+    let templates: [JSONTemplate]
+}
+
+struct JSONTemplate: Codable {
+    let id: String
+    let name: String
+    let description: String
+    let category: String
+    let isPopular: Bool
+    let thumbnail: String?
+    let overlay: JSONOverlay
+    let preset: JSONPreset
+}
+
+struct JSONOverlay: Codable {
+    let elements: [JSONOverlayElement]
+}
+
+struct JSONOverlayElement: Codable {
+    let kind: String
+    let points: [JSONPoint]?
+    let rect: JSONRect?
+    let gridRows: Int?
+    let gridCols: Int?
+}
+
+struct JSONPoint: Codable {
+    let x: Double
+    let y: Double
+}
+
+struct JSONRect: Codable {
+    let x: Double
+    let y: Double
+    let width: Double
+    let height: Double
+}
+
+struct JSONPreset: Codable {
+    let name: String
+    let exposureBias: Float?
+    let temperature: Float?
+    let tint: Float?
+    let exposureEV: Float?
+    let temperatureShift: Float?
+    let tintShift: Float?
+    let vibrance: Float?
+    let saturation: Float?
+    let contrast: Float?
+    let highlights: Float?
+    let shadows: Float?
+    let clarity: Float?
+    let lutFileName: String?
+    let lutIntensity: Float?
 }
 
 // MARK: - Sample Templates
@@ -262,7 +435,7 @@ struct SampleTemplates {
         isPopular: true
     )
 
-    static let all: [PhotoTemplate] = [
+    static let hardcodedTemplates: [PhotoTemplate] = [
         ruleOfThirdsPortrait,
         foodOverhead,
         goldenRatioLandscape,
@@ -273,7 +446,184 @@ struct SampleTemplates {
         frameWithin
     ]
 
+    static let all: [PhotoTemplate] = TemplateLoader.shared.loadTemplates()
     static let popular: [PhotoTemplate] = all.filter { $0.isPopular }
+}
+
+// MARK: - Filter Processor
+final class FilterProcessor {
+    static let shared = FilterProcessor()
+
+    #if os(iOS)
+    let context: CIContext = {
+        guard let device = MTLCreateSystemDefaultDevice() else {
+            return CIContext()
+        }
+        return CIContext(mtlDevice: device, options: [
+            .workingColorSpace: CGColorSpace(name: CGColorSpace.displayP3) as Any,
+            .outputColorSpace: CGColorSpace(name: CGColorSpace.displayP3) as Any,
+            .cacheIntermediates: true
+        ])
+    }()
+    #else
+    let context = CIContext()
+    #endif
+
+    private var lutCache: [String: CIImage] = [:]
+
+    func applyPreset(_ preset: Preset, to image: CIImage) -> CIImage {
+        var output = image
+
+        // Exposure adjustment
+        if let ev = preset.exposureEV {
+            let filter = CIFilter.exposureAdjust()
+            filter.inputImage = output
+            filter.ev = ev
+            output = filter.outputImage ?? output
+        }
+
+        // Temperature and Tint
+        if let temp = preset.temperatureShift, let tint = preset.tintShift {
+            let filter = CIFilter.temperatureAndTint()
+            filter.inputImage = output
+            // Neutral values
+            filter.neutral = CIVector(x: 6500, y: 0)
+            // Target values (shift from neutral)
+            filter.targetNeutral = CIVector(x: 6500 + CGFloat(temp * 1000), y: CGFloat(tint * 100))
+            output = filter.outputImage ?? output
+        } else if let temp = preset.temperature, let tint = preset.tint {
+            let filter = CIFilter.temperatureAndTint()
+            filter.inputImage = output
+            filter.neutral = CIVector(x: 6500, y: 0)
+            filter.targetNeutral = CIVector(x: CGFloat(temp), y: CGFloat(tint))
+            output = filter.outputImage ?? output
+        }
+
+        // Highlights adjustment (using CIHighlightShadowAdjust)
+        if let highlights = preset.highlights, let shadows = preset.shadows {
+            let filter = CIFilter.highlightShadowAdjust()
+            filter.inputImage = output
+            filter.highlightAmount = highlights
+            filter.shadowAmount = shadows
+            output = filter.outputImage ?? output
+        } else if let highlights = preset.highlights {
+            let filter = CIFilter.highlightShadowAdjust()
+            filter.inputImage = output
+            filter.highlightAmount = highlights
+            output = filter.outputImage ?? output
+        } else if let shadows = preset.shadows {
+            let filter = CIFilter.highlightShadowAdjust()
+            filter.inputImage = output
+            filter.shadowAmount = shadows
+            output = filter.outputImage ?? output
+        }
+
+        // Vibrance
+        if let vibrance = preset.vibrance {
+            let filter = CIFilter.vibrance()
+            filter.inputImage = output
+            filter.amount = vibrance
+            output = filter.outputImage ?? output
+        }
+
+        // Color Controls (Saturation & Contrast combined)
+        if preset.saturation != nil || preset.contrast != nil {
+            let filter = CIFilter.colorControls()
+            filter.inputImage = output
+            filter.saturation = preset.saturation ?? 1.0
+            filter.contrast = preset.contrast ?? 1.0
+            output = filter.outputImage ?? output
+        }
+
+        // Clarity (using unsharp mask)
+        if let clarity = preset.clarity, clarity != 0 {
+            let filter = CIFilter.unsharpMask()
+            filter.inputImage = output
+            filter.radius = 2.5
+            filter.intensity = clarity
+            output = filter.outputImage ?? output
+        }
+
+        // LUT (Color Cube)
+        if let lutFile = preset.lutFileName, let intensity = preset.lutIntensity {
+            if let lutImage = loadLUT(fileName: lutFile) {
+                let filter = CIFilter.colorCubeWithColorSpace()
+                filter.inputImage = output
+                filter.cubeDimension = 64
+                filter.cubeData = lutImage
+                filter.colorSpace = CGColorSpace(name: CGColorSpace.displayP3)
+
+                if let lutOutput = filter.outputImage {
+                    // Blend LUT with original based on intensity
+                    if intensity < 1.0 {
+                        let blendFilter = CIFilter.sourceOverCompositing()
+                        blendFilter.inputImage = lutOutput
+                        blendFilter.backgroundImage = output
+                        // Apply intensity by adjusting opacity
+                        let opacityFilter = CIFilter.colorMatrix()
+                        opacityFilter?.inputImage = lutOutput
+                        opacityFilter?.setValue(CIVector(x: 1, y: 0, z: 0, w: 0), forKey: "inputRVector")
+                        opacityFilter?.setValue(CIVector(x: 0, y: 1, z: 0, w: 0), forKey: "inputGVector")
+                        opacityFilter?.setValue(CIVector(x: 0, y: 0, z: 1, w: 0), forKey: "inputBVector")
+                        opacityFilter?.setValue(CIVector(x: 0, y: 0, z: 0, w: CGFloat(intensity)), forKey: "inputAVector")
+                        output = opacityFilter?.outputImage ?? lutOutput
+                    } else {
+                        output = lutOutput
+                    }
+                }
+            }
+        }
+
+        return output
+    }
+
+    private func loadLUT(fileName: String) -> Data? {
+        // Try to load .cube file from bundle
+        guard let url = Bundle.main.url(forResource: fileName, withExtension: "cube") else {
+            return nil
+        }
+
+        do {
+            let content = try String(contentsOf: url)
+            return parseCubeLUT(content: content)
+        } catch {
+            print("Error loading LUT: \(error)")
+            return nil
+        }
+    }
+
+    private func parseCubeLUT(content: String) -> Data? {
+        // Parse .cube LUT format
+        var size = 64
+        var values: [Float] = []
+
+        let lines = content.components(separatedBy: .newlines)
+        for line in lines {
+            let trimmed = line.trimmingCharacters(in: .whitespaces)
+            if trimmed.hasPrefix("LUT_3D_SIZE") {
+                let components = trimmed.components(separatedBy: .whitespaces)
+                if components.count > 1, let s = Int(components[1]) {
+                    size = s
+                }
+            } else if !trimmed.isEmpty && !trimmed.hasPrefix("#") && !trimmed.hasPrefix("TITLE") && !trimmed.hasPrefix("DOMAIN") {
+                let components = trimmed.components(separatedBy: .whitespaces).filter { !$0.isEmpty }
+                if components.count >= 3 {
+                    if let r = Float(components[0]), let g = Float(components[1]), let b = Float(components[2]) {
+                        values.append(r)
+                        values.append(g)
+                        values.append(b)
+                        values.append(1.0) // alpha
+                    }
+                }
+            }
+        }
+
+        guard values.count == size * size * size * 4 else {
+            return nil
+        }
+
+        return Data(bytes: &values, count: values.count * MemoryLayout<Float>.size)
+    }
 }
 
 // MARK: - Camera Manager
@@ -285,11 +635,15 @@ final class CameraManager: NSObject, ObservableObject, AVCapturePhotoCaptureDele
     @Published var latestPhoto: NSImage? = nil
     #endif
     @Published var authorizationStatus: AVAuthorizationStatus = .notDetermined
+    @Published var currentCameraPosition: AVCaptureDevice.Position = .back
+    @Published var zoomFactor: CGFloat = 1.0
+    @Published var isProcessing = false
 
     let session = AVCaptureSession()
     private let sessionQueue = DispatchQueue(label: "camera.session.queue")
     private let photoOutput = AVCapturePhotoOutput()
     private var videoDevice: AVCaptureDevice?
+    private var currentInput: AVCaptureDeviceInput?
 
     var activePreset: Preset? { didSet { applyLivePreset() } }
 
@@ -315,18 +669,7 @@ final class CameraManager: NSObject, ObservableObject, AVCapturePhotoCaptureDele
             self.session.beginConfiguration()
             self.session.sessionPreset = .photo
 
-            guard let device = AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: .back) else {
-                print("No back camera")
-                self.session.commitConfiguration()
-                return
-            }
-            self.videoDevice = device
-            do {
-                let input = try AVCaptureDeviceInput(device: device)
-                if self.session.canAddInput(input) { self.session.addInput(input) }
-            } catch {
-                print("Input error: \(error)")
-            }
+            self.setupCamera(position: .back)
 
             if self.session.canAddOutput(self.photoOutput) {
                 self.session.addOutput(self.photoOutput)
@@ -336,6 +679,109 @@ final class CameraManager: NSObject, ObservableObject, AVCapturePhotoCaptureDele
             }
 
             self.session.commitConfiguration()
+        }
+    }
+
+    private func setupCamera(position: AVCaptureDevice.Position) {
+        guard let device = AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: position) else {
+            print("No camera for position \(position)")
+            return
+        }
+
+        self.videoDevice = device
+
+        do {
+            let input = try AVCaptureDeviceInput(device: device)
+            if let currentInput = self.currentInput {
+                self.session.removeInput(currentInput)
+            }
+            if self.session.canAddInput(input) {
+                self.session.addInput(input)
+                self.currentInput = input
+            }
+
+            // Configure 60fps if available
+            #if os(iOS)
+            try device.lockForConfiguration()
+
+            // Find best format supporting 60fps
+            let formats = device.formats
+            var bestFormat: AVCaptureDevice.Format?
+            var bestFrameRate: Double = 0
+
+            for format in formats {
+                for range in format.videoSupportedFrameRateRanges {
+                    if range.maxFrameRate >= 60 && range.maxFrameRate > bestFrameRate {
+                        bestFormat = format
+                        bestFrameRate = range.maxFrameRate
+                    }
+                }
+            }
+
+            if let format = bestFormat {
+                device.activeFormat = format
+                device.activeVideoMinFrameDuration = CMTime(value: 1, timescale: 60)
+                device.activeVideoMaxFrameDuration = CMTime(value: 1, timescale: 60)
+            }
+
+            device.unlockForConfiguration()
+            #endif
+        } catch {
+            print("Camera setup error: \(error)")
+        }
+    }
+
+    func toggleCamera() {
+        let newPosition: AVCaptureDevice.Position = currentCameraPosition == .back ? .front : .back
+        sessionQueue.async {
+            self.session.beginConfiguration()
+            self.setupCamera(position: newPosition)
+            self.session.commitConfiguration()
+
+            DispatchQueue.main.async {
+                self.currentCameraPosition = newPosition
+            }
+        }
+    }
+
+    func setZoom(_ factor: CGFloat) {
+        guard let device = videoDevice else { return }
+        sessionQueue.async {
+            do {
+                try device.lockForConfiguration()
+                let clampedFactor = max(1.0, min(factor, device.activeFormat.videoMaxZoomFactor))
+                device.videoZoomFactor = clampedFactor
+                device.unlockForConfiguration()
+
+                DispatchQueue.main.async {
+                    self.zoomFactor = clampedFactor
+                }
+            } catch {
+                print("Zoom error: \(error)")
+            }
+        }
+    }
+
+    func focusAndExpose(at point: CGPoint) {
+        guard let device = videoDevice else { return }
+        sessionQueue.async {
+            do {
+                try device.lockForConfiguration()
+
+                if device.isFocusPointOfInterestSupported && device.isFocusModeSupported(.autoFocus) {
+                    device.focusPointOfInterest = point
+                    device.focusMode = .autoFocus
+                }
+
+                if device.isExposurePointOfInterestSupported && device.isExposureModeSupported(.autoExpose) {
+                    device.exposurePointOfInterest = point
+                    device.exposureMode = .autoExpose
+                }
+
+                device.unlockForConfiguration()
+            } catch {
+                print("Focus/Expose error: \(error)")
+            }
         }
     }
 
@@ -393,6 +839,10 @@ final class CameraManager: NSObject, ObservableObject, AVCapturePhotoCaptureDele
     #endif
 
     func capture(preset: Preset?) {
+        DispatchQueue.main.async {
+            self.isProcessing = true
+        }
+
         let settings = AVCapturePhotoSettings()
         #if os(iOS)
         settings.isHighResolutionPhotoEnabled = true
@@ -408,34 +858,55 @@ final class CameraManager: NSObject, ObservableObject, AVCapturePhotoCaptureDele
 
     func photoOutput(_ output: AVCapturePhotoOutput, didFinishProcessingPhoto photo: AVCapturePhoto, error: Error?) {
         guard error == nil, let data = photo.fileDataRepresentation() else {
-            print("Photo error: \(String(describing: error))"); return
+            print("Photo error: \(String(describing: error))")
+            DispatchQueue.main.async {
+                self.isProcessing = false
+            }
+            return
         }
         #if canImport(UIKit)
-        guard let uiImage = UIImage(data: data) else { return }
-        let processed = applyFilters(to: uiImage, with: pendingPreset)
-        DispatchQueue.main.async { self.latestPhoto = processed }
-        saveToPhotos(processed)
+        guard let uiImage = UIImage(data: data) else {
+            DispatchQueue.main.async {
+                self.isProcessing = false
+            }
+            return
+        }
+
+        // Process image off the main thread
+        DispatchQueue.global(qos: .userInitiated).async {
+            let processed = self.applyFilters(to: uiImage, with: self.pendingPreset)
+            DispatchQueue.main.async {
+                self.latestPhoto = processed
+                self.isProcessing = false
+            }
+            self.saveToPhotos(processed)
+        }
         #else
-        guard let nsImage = NSImage(data: data) else { return }
-        DispatchQueue.main.async { self.latestPhoto = nsImage }
+        guard let nsImage = NSImage(data: data) else {
+            DispatchQueue.main.async {
+                self.isProcessing = false
+            }
+            return
+        }
+        DispatchQueue.main.async {
+            self.latestPhoto = nsImage
+            self.isProcessing = false
+        }
         #endif
     }
 
     #if canImport(UIKit)
     private func applyFilters(to image: UIImage, with preset: Preset?) -> UIImage {
         guard let preset = preset else { return image }
-        let context = CIContext()
         guard let ciImage = CIImage(image: image) else { return image }
-        var output = ciImage
-        if let ev = preset.exposureEV {
-            let f = CIFilter.exposureAdjust(); f.inputImage = output; f.ev = ev; output = f.outputImage ?? output
+        let filtered = FilterProcessor.shared.applyPreset(preset, to: ciImage)
+
+        // Use Display P3 color space if available
+        let colorSpace = CGColorSpace(name: CGColorSpace.displayP3) ?? CGColorSpaceCreateDeviceRGB()
+
+        if let cgImage = FilterProcessor.shared.context.createCGImage(filtered, from: filtered.extent, format: .RGBA8, colorSpace: colorSpace) {
+            return UIImage(cgImage: cgImage, scale: image.scale, orientation: image.imageOrientation)
         }
-        if let v = preset.vibrance {
-            let f = CIFilter.vibrance(); f.inputImage = output; f.amount = v; output = f.outputImage ?? output
-        }
-        if let s = preset.saturation { let f = CIFilter.colorControls(); f.inputImage = output; f.saturation = s; output = f.outputImage ?? output }
-        if let c = preset.contrast { let f = CIFilter.colorControls(); f.inputImage = output; f.contrast = c; output = f.outputImage ?? output }
-        if let cgImage = context.createCGImage(output, from: output.extent) { return UIImage(cgImage: cgImage, scale: image.scale, orientation: image.imageOrientation) }
         return image
     }
     #endif
@@ -444,10 +915,44 @@ final class CameraManager: NSObject, ObservableObject, AVCapturePhotoCaptureDele
     private func saveToPhotos(_ image: UIImage) {
         PHPhotoLibrary.requestAuthorization { status in
             guard status == .authorized || status == .limited else { return }
+
+            // Convert to high-quality JPEG with Display P3
+            let colorSpace = CGColorSpace(name: CGColorSpace.displayP3) ?? CGColorSpaceCreateDeviceRGB()
+            guard let cgImage = image.cgImage else {
+                // Fallback to regular save
+                PHPhotoLibrary.shared().performChanges({
+                    PHAssetChangeRequest.creationRequestForAsset(from: image)
+                }) { success, error in
+                    if let error = error { print("Save error: \(error)") }
+                }
+                return
+            }
+
+            // Create high-quality JPEG data
+            let mutableData = NSMutableData()
+            guard let destination = CGImageDestinationCreateWithData(mutableData as CFMutableData, "public.jpeg" as CFString, 1, nil) else {
+                return
+            }
+
+            let options: [CFString: Any] = [
+                kCGImageDestinationLossyCompressionQuality: 0.9,
+                kCGImagePropertyOrientation: image.imageOrientation.cgImagePropertyOrientation,
+                kCGImageDestinationEmbedThumbnail: true
+            ]
+
+            CGImageDestinationAddImage(destination, cgImage, options as CFDictionary)
+            CGImageDestinationFinalize(destination)
+
+            // Save to photo library
             PHPhotoLibrary.shared().performChanges({
-                PHAssetChangeRequest.creationRequestForAsset(from: image)
+                let creationRequest = PHAssetCreationRequest.forAsset()
+                creationRequest.addResource(with: .photo, data: mutableData as Data, options: nil)
             }) { success, error in
-                if let error = error { print("Save error: \(error)") }
+                if let error = error {
+                    print("Save error: \(error)")
+                } else if success {
+                    print("Photo saved successfully with Display P3 color space")
+                }
             }
         }
     }
@@ -459,24 +964,83 @@ final class CameraManager: NSObject, ObservableObject, AVCapturePhotoCaptureDele
 struct CameraPreviewView: UIViewRepresentable {
     @ObservedObject var manager: CameraManager
 
-    func makeUIView(context: Context) -> PreviewUIView { PreviewUIView(session: manager.session) }
+    func makeUIView(context: Context) -> PreviewUIView {
+        let view = PreviewUIView(session: manager.session, manager: manager)
+        return view
+    }
+
     func updateUIView(_ uiView: PreviewUIView, context: Context) { }
 
     final class PreviewUIView: UIView {
         private var videoPreviewLayer: AVCaptureVideoPreviewLayer
-        init(session: AVCaptureSession) {
+        private weak var manager: CameraManager?
+        private var initialZoom: CGFloat = 1.0
+
+        init(session: AVCaptureSession, manager: CameraManager) {
             self.videoPreviewLayer = AVCaptureVideoPreviewLayer(session: session)
+            self.manager = manager
             super.init(frame: .zero)
             videoPreviewLayer.videoGravity = .resizeAspect
             layer.addSublayer(videoPreviewLayer)
+
+            // Add tap gesture for focus/expose
+            let tapGesture = UITapGestureRecognizer(target: self, action: #selector(handleTap(_:)))
+            addGestureRecognizer(tapGesture)
+
+            // Add pinch gesture for zoom
+            let pinchGesture = UIPinchGestureRecognizer(target: self, action: #selector(handlePinch(_:)))
+            addGestureRecognizer(pinchGesture)
         }
+
         required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
+
         override func layoutSubviews() {
             super.layoutSubviews()
             CATransaction.begin()
             CATransaction.setDisableActions(true)
             videoPreviewLayer.frame = bounds
             CATransaction.commit()
+        }
+
+        @objc private func handleTap(_ gesture: UITapGestureRecognizer) {
+            let location = gesture.location(in: self)
+            let devicePoint = videoPreviewLayer.captureDevicePointConverted(fromLayerPoint: location)
+
+            manager?.focusAndExpose(at: devicePoint)
+
+            // Show focus indicator
+            showFocusIndicator(at: location)
+        }
+
+        @objc private func handlePinch(_ gesture: UIPinchGestureRecognizer) {
+            guard let manager = manager else { return }
+
+            if gesture.state == .began {
+                initialZoom = manager.zoomFactor
+            }
+
+            let newZoom = initialZoom * gesture.scale
+            manager.setZoom(newZoom)
+        }
+
+        private func showFocusIndicator(at point: CGPoint) {
+            let indicator = UIView(frame: CGRect(x: 0, y: 0, width: 80, height: 80))
+            indicator.center = point
+            indicator.layer.borderColor = UIColor.systemYellow.cgColor
+            indicator.layer.borderWidth = 2
+            indicator.layer.cornerRadius = 40
+            indicator.backgroundColor = .clear
+            addSubview(indicator)
+
+            UIView.animate(withDuration: 0.3, animations: {
+                indicator.transform = CGAffineTransform(scaleX: 0.7, y: 0.7)
+            }) { _ in
+                UIView.animate(withDuration: 0.3, delay: 0.5, options: [], animations: {
+                    indicator.alpha = 0
+                }) { _ in
+                    indicator.removeFromSuperview()
+                }
+            }
         }
     }
 }
@@ -613,6 +1177,29 @@ struct CameraTabView: View {
                     .opacity(overlayOpacity)
             }
 
+            // Progress HUD
+            if camera.isProcessing {
+                Color.black.opacity(0.4)
+                    .ignoresSafeArea()
+                    .transition(.opacity)
+
+                VStack(spacing: 16) {
+                    ProgressView()
+                        .progressViewStyle(CircularProgressViewStyle(tint: .white))
+                        .scaleEffect(1.5)
+
+                    Text("Processing...")
+                        .font(.system(size: 16, weight: .medium, design: .rounded))
+                        .foregroundColor(.white)
+                }
+                .padding(32)
+                .background(
+                    RoundedRectangle(cornerRadius: 20)
+                        .fill(.ultraThinMaterial)
+                )
+                .transition(.scale.combined(with: .opacity))
+            }
+
             // UI Controls
             VStack {
                 // Top Info Bar
@@ -633,6 +1220,24 @@ struct CameraTabView: View {
                     )
 
                     Spacer()
+
+                    // Camera Toggle Button
+                    Button(action: {
+                        camera.toggleCamera()
+                        #if os(iOS)
+                        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                        #endif
+                    }) {
+                        Image(systemName: "camera.rotate.fill")
+                            .font(.system(size: 20))
+                            .foregroundColor(.white)
+                            .frame(width: 44, height: 44)
+                            .background(
+                                Circle()
+                                    .fill(.ultraThinMaterial)
+                                    .opacity(0.7)
+                            )
+                    }
                 }
                 .padding()
 
@@ -1379,3 +1984,22 @@ struct ContentView: View {
         MainTabView()
     }
 }
+
+// MARK: - Extensions
+#if canImport(UIKit)
+extension UIImage.Orientation {
+    var cgImagePropertyOrientation: CGImagePropertyOrientation {
+        switch self {
+        case .up: return .up
+        case .down: return .down
+        case .left: return .left
+        case .right: return .right
+        case .upMirrored: return .upMirrored
+        case .downMirrored: return .downMirrored
+        case .leftMirrored: return .leftMirrored
+        case .rightMirrored: return .rightMirrored
+        @unknown default: return .up
+        }
+    }
+}
+#endif

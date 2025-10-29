@@ -1,0 +1,314 @@
+{
+  "version": "1.0",
+  "templates": [
+    {
+      "id": "portrait-classic",
+      "name": "Portrait Classic",
+      "description": "Align subject's eyes on the top third line for perfect portrait composition",
+      "category": "Portrait",
+      "isPopular": true,
+      "thumbnail": "portrait-classic-thumb.jpg",
+      "overlay": {
+        "elements": [
+          {
+            "kind": "grid",
+            "gridRows": 3,
+            "gridCols": 3
+          },
+          {
+            "kind": "ellipse",
+            "rect": {
+              "x": 0.30,
+              "y": 0.25,
+              "width": 0.08,
+              "height": 0.05
+            }
+          },
+          {
+            "kind": "ellipse",
+            "rect": {
+              "x": 0.62,
+              "y": 0.25,
+              "width": 0.08,
+              "height": 0.05
+            }
+          }
+        ]
+      },
+      "preset": {
+        "name": "Soft Portrait",
+        "exposureBias": 0.3,
+        "exposureEV": 0.2,
+        "vibrance": 0.2,
+        "saturation": 1.05,
+        "contrast": 1.03
+      }
+    },
+    {
+      "id": "flat-lay",
+      "name": "Flat Lay",
+      "description": "Perfect overhead view for food and product photography",
+      "category": "Food",
+      "isPopular": true,
+      "thumbnail": "flat-lay-thumb.jpg",
+      "overlay": {
+        "elements": [
+          {
+            "kind": "grid",
+            "gridRows": 2,
+            "gridCols": 2
+          },
+          {
+            "kind": "ellipse",
+            "rect": {
+              "x": 0.25,
+              "y": 0.25,
+              "width": 0.5,
+              "height": 0.5
+            }
+          },
+          {
+            "kind": "path",
+            "points": [
+              {"x": 0.5, "y": 0.0},
+              {"x": 0.5, "y": 1.0}
+            ]
+          }
+        ]
+      },
+      "preset": {
+        "name": "Crisp Food",
+        "exposureBias": 0.1,
+        "exposureEV": 0.1,
+        "vibrance": 0.25,
+        "saturation": 1.08,
+        "contrast": 1.07
+      }
+    },
+    {
+      "id": "golden-hour",
+      "name": "Golden Hour",
+      "description": "Golden ratio spiral for stunning landscape compositions",
+      "category": "Landscape",
+      "isPopular": true,
+      "thumbnail": "golden-hour-thumb.jpg",
+      "overlay": {
+        "elements": [
+          {
+            "kind": "grid",
+            "gridRows": 3,
+            "gridCols": 3
+          },
+          {
+            "kind": "path",
+            "points": [
+              {"x": 0.0, "y": 0.618},
+              {"x": 1.0, "y": 0.618}
+            ]
+          }
+        ]
+      },
+      "preset": {
+        "name": "Warm Landscape",
+        "exposureBias": -0.2,
+        "exposureEV": -0.1,
+        "vibrance": 0.3,
+        "saturation": 1.1,
+        "contrast": 1.05,
+        "temperatureShift": 0.15,
+        "tintShift": 0.05
+      }
+    },
+    {
+      "id": "symmetry",
+      "name": "Symmetry",
+      "description": "Perfect symmetry for architectural and geometric shots",
+      "category": "Architecture",
+      "isPopular": false,
+      "thumbnail": "symmetry-thumb.jpg",
+      "overlay": {
+        "elements": [
+          {
+            "kind": "path",
+            "points": [
+              {"x": 0.5, "y": 0.0},
+              {"x": 0.5, "y": 1.0}
+            ]
+          },
+          {
+            "kind": "path",
+            "points": [
+              {"x": 0.0, "y": 0.5},
+              {"x": 1.0, "y": 0.5}
+            ]
+          },
+          {
+            "kind": "grid",
+            "gridRows": 4,
+            "gridCols": 4
+          }
+        ]
+      },
+      "preset": {
+        "name": "Sharp Architecture",
+        "exposureBias": -0.3,
+        "exposureEV": 0.0,
+        "vibrance": 0.1,
+        "saturation": 0.95,
+        "contrast": 1.15,
+        "clarity": 0.5
+      }
+    },
+    {
+      "id": "center-stage",
+      "name": "Center Stage",
+      "description": "Center composition for powerful, focused subjects",
+      "category": "Product",
+      "isPopular": false,
+      "thumbnail": "center-stage-thumb.jpg",
+      "overlay": {
+        "elements": [
+          {
+            "kind": "ellipse",
+            "rect": {
+              "x": 0.25,
+              "y": 0.25,
+              "width": 0.5,
+              "height": 0.5
+            }
+          },
+          {
+            "kind": "ellipse",
+            "rect": {
+              "x": 0.35,
+              "y": 0.35,
+              "width": 0.3,
+              "height": 0.3
+            }
+          }
+        ]
+      },
+      "preset": {
+        "name": "Clean Product",
+        "exposureBias": 0.5,
+        "exposureEV": 0.3,
+        "vibrance": 0.15,
+        "saturation": 1.0,
+        "contrast": 1.08
+      }
+    },
+    {
+      "id": "dynamic-diagonal",
+      "name": "Dynamic Diagonal",
+      "description": "Diagonal leading lines for action and movement",
+      "category": "Action",
+      "isPopular": true,
+      "thumbnail": "dynamic-diagonal-thumb.jpg",
+      "overlay": {
+        "elements": [
+          {
+            "kind": "path",
+            "points": [
+              {"x": 0.0, "y": 0.0},
+              {"x": 1.0, "y": 1.0}
+            ]
+          },
+          {
+            "kind": "path",
+            "points": [
+              {"x": 0.0, "y": 1.0},
+              {"x": 1.0, "y": 0.0}
+            ]
+          },
+          {
+            "kind": "grid",
+            "gridRows": 3,
+            "gridCols": 3
+          }
+        ]
+      },
+      "preset": {
+        "name": "Energetic",
+        "exposureBias": 0.0,
+        "exposureEV": 0.0,
+        "vibrance": 0.35,
+        "saturation": 1.12,
+        "contrast": 1.1
+      }
+    },
+    {
+      "id": "minimalist",
+      "name": "Minimalist",
+      "description": "Negative space composition for clean, minimal aesthetics",
+      "category": "Minimal",
+      "isPopular": false,
+      "thumbnail": "minimalist-thumb.jpg",
+      "overlay": {
+        "elements": [
+          {
+            "kind": "rect",
+            "rect": {
+              "x": 0.6,
+              "y": 0.6,
+              "width": 0.3,
+              "height": 0.3
+            }
+          },
+          {
+            "kind": "path",
+            "points": [
+              {"x": 0.0, "y": 0.618},
+              {"x": 1.0, "y": 0.618}
+            ]
+          }
+        ]
+      },
+      "preset": {
+        "name": "Soft Minimal",
+        "exposureBias": 0.7,
+        "exposureEV": 0.4,
+        "vibrance": 0.0,
+        "saturation": 0.85,
+        "contrast": 0.95
+      }
+    },
+    {
+      "id": "frame-within",
+      "name": "Frame Within",
+      "description": "Natural framing for depth and focus",
+      "category": "Creative",
+      "isPopular": true,
+      "thumbnail": "frame-within-thumb.jpg",
+      "overlay": {
+        "elements": [
+          {
+            "kind": "rect",
+            "rect": {
+              "x": 0.15,
+              "y": 0.15,
+              "width": 0.7,
+              "height": 0.7
+            }
+          },
+          {
+            "kind": "rect",
+            "rect": {
+              "x": 0.3,
+              "y": 0.3,
+              "width": 0.4,
+              "height": 0.4
+            }
+          }
+        ]
+      },
+      "preset": {
+        "name": "Depth Focus",
+        "exposureBias": 0.2,
+        "exposureEV": 0.1,
+        "vibrance": 0.2,
+        "saturation": 1.05,
+        "contrast": 1.06
+      }
+    }
+  ]
+}
